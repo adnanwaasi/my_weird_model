@@ -12,3 +12,8 @@ ideas :
 
   a stock market prediction
       a lstm layer is a must 
+  
+
+  the anti money laundering is the code which i yoinked from a guy and changed the model architecture alone as i was having a hard time to convert data into nodes he's the goat 
+  then i pushed my stuff 
+  it was a 5th sem project
