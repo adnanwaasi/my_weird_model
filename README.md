@@ -1,6 +1,10 @@
-this project is under production 
+this repo is under work
 
 this will contain the following :
+ i have done anti money laundering system 
+
+
+next things i can do 
 
 ideas :
 
