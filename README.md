@@ -1,5 +1,9 @@
 this repo is under work
 
+but still the code for money laundering detection works 
+you can ping me for colab ( here is my discord adnan_waasi )
+
+
 this will contain the following :
 
  i have done anti money laundering system 
