@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 
 import httpx
+from langchain_core.tools import tool
 
 USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36"
 # SEC asks automated clients to identify themselves: https://www.sec.gov/os/accessing-edgar-data
@@ -36,7 +37,9 @@ def _num(x):
 # ---------------------------------------------------------------- web
 
 
+@tool
 def web_search(query: str, max_results: int = 8) -> str:
+    """General web search (DuckDuckGo). Returns titles, URLs and snippets."""
     try:
         from ddgs import DDGS
 
@@ -46,7 +49,9 @@ def web_search(query: str, max_results: int = 8) -> str:
         return _err(e)
 
 
+@tool
 def news_search(query: str, max_results: int = 10) -> str:
+    """Search recent news articles; returns dates, publishers, URLs and snippets."""
     try:
         from ddgs import DDGS
 
@@ -62,7 +67,9 @@ def news_search(query: str, max_results: int = 10) -> str:
         return _err(e)
 
 
+@tool
 def fetch_page(url: str, max_chars: int = 12000) -> str:
+    """Download a web page and return its main readable text. Use on promising search results."""
     try:
         import trafilatura
 
@@ -79,7 +86,9 @@ def fetch_page(url: str, max_chars: int = 12000) -> str:
 # ---------------------------------------------------------------- market data (yfinance)
 
 
+@tool
 def stock_quote(ticker: str) -> str:
+    """Company profile, price, valuation multiples, margins and analyst targets for a ticker (e.g. NVDA, RELIANCE.NS)."""
     try:
         import yfinance as yf
 
@@ -101,7 +110,9 @@ def stock_quote(ticker: str) -> str:
         return _err(e)
 
 
+@tool
 def price_history(ticker: str, period: str = "1y") -> str:
+    """Price performance, volatility, drawdown and moving-average trend. period: 1mo, 3mo, 6mo, 1y, 2y or 5y."""
     try:
         import numpy as np
         import yfinance as yf
@@ -133,7 +144,9 @@ def price_history(ticker: str, period: str = "1y") -> str:
         return _err(e)
 
 
+@tool
 def financials(ticker: str) -> str:
+    """Annual and quarterly income statement, balance sheet and cash flow highlights for a ticker."""
     try:
         import yfinance as yf
 
@@ -168,7 +181,9 @@ def _sec_ticker_map() -> dict:
     return {v["ticker"].upper(): v for v in r.json().values()}
 
 
+@tool
 def sec_filings(ticker: str, forms: str = "10-K,10-Q,8-K", limit: int = 10) -> str:
+    """Recent SEC filings (forms is comma-separated, e.g. '10-K,10-Q,8-K') with document URLs. US-listed companies only."""
     try:
         company = _sec_ticker_map().get(ticker.upper())
         if not company:
@@ -197,7 +212,9 @@ def sec_filings(ticker: str, forms: str = "10-K,10-Q,8-K", limit: int = 10) -> s
 # ---------------------------------------------------------------- LSTM forecast (../stock_market_prediction)
 
 
+@tool
 def lstm_forecast(ticker: str) -> str:
+    """Next-day direction forecast from the local LSTM model. A weak statistical signal; needs a trained checkpoint."""
     try:
         if str(STOCK_PREDICTOR_DIR) not in sys.path:
             sys.path.insert(0, str(STOCK_PREDICTOR_DIR))
@@ -212,53 +229,15 @@ def lstm_forecast(ticker: str) -> str:
 
 # ---------------------------------------------------------------- registry
 
-
-def _schema(name, description, properties, required):
-    return {
-        "type": "function",
-        "function": {
-            "name": name,
-            "description": description,
-            "parameters": {"type": "object", "properties": properties, "required": required},
-        },
-    }
-
-
-_TICKER = {"ticker": {"type": "string", "description": "Exchange ticker, e.g. NVDA or RELIANCE.NS"}}
-
-TOOLS = {
-    "web_search": (web_search, _schema(
-        "web_search", "General web search (DuckDuckGo). Returns titles, URLs and snippets.",
-        {"query": {"type": "string"}, "max_results": {"type": "integer"}}, ["query"])),
-    "news_search": (news_search, _schema(
-        "news_search", "Search recent news articles with dates and publishers.",
-        {"query": {"type": "string"}, "max_results": {"type": "integer"}}, ["query"])),
-    "fetch_page": (fetch_page, _schema(
-        "fetch_page", "Download a web page and return its main readable text. Use on promising search results.",
-        {"url": {"type": "string"}}, ["url"])),
-    "stock_quote": (stock_quote, _schema(
-        "stock_quote", "Company profile, price, valuation multiples, margins and analyst targets.", _TICKER, ["ticker"])),
-    "price_history": (price_history, _schema(
-        "price_history", "Price performance, volatility, drawdown and moving-average trend.",
-        {**_TICKER, "period": {"type": "string", "description": "1mo, 3mo, 6mo, 1y, 2y, 5y"}}, ["ticker"])),
-    "financials": (financials, _schema(
-        "financials", "Annual and quarterly income statement, balance sheet and cash flow highlights.", _TICKER, ["ticker"])),
-    "sec_filings": (sec_filings, _schema(
-        "sec_filings", "Recent SEC filings (10-K, 10-Q, 8-K...) with document URLs. US-listed companies only.",
-        {**_TICKER, "forms": {"type": "string", "description": "Comma-separated form types"}}, ["ticker"])),
-    "lstm_forecast": (lstm_forecast, _schema(
-        "lstm_forecast", "Next-day direction forecast from the local LSTM model (weak signal; needs a trained checkpoint).",
-        _TICKER, ["ticker"])),
-}
-
-TOOL_SCHEMAS = [schema for _, schema in TOOLS.values()]
+TOOLS = [web_search, news_search, fetch_page, stock_quote, price_history, financials, sec_filings, lstm_forecast]
+TOOLS_BY_NAME = {t.name: t for t in TOOLS}
 
 
 def call_tool(name: str, args: dict) -> str:
-    if name not in TOOLS:
-        return _ok({"error": f"unknown tool {name!r}; available: {sorted(TOOLS)}"})
-    fn = TOOLS[name][0]
+    """Run a tool by name; bad names or arguments come back as an error string, never raise."""
+    if name not in TOOLS_BY_NAME:
+        return _ok({"error": f"unknown tool {name!r}; available: {sorted(TOOLS_BY_NAME)}"})
     try:
-        return fn(**(args or {}))
-    except TypeError as e:  # bad/missing arguments from the model
+        return TOOLS_BY_NAME[name].invoke(args or {})
+    except Exception as e:  # e.g. argument validation errors from the model
         return _err(e)

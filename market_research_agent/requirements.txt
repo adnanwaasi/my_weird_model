@@ -1,5 +1,8 @@
-anthropic
-ollama>=0.4
+langchain-core
+langchain-ollama
+langchain-anthropic
+langgraph
+pydantic>=2
 ddgs
 httpx
 trafilatura

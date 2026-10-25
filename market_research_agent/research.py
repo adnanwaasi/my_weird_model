@@ -2,8 +2,8 @@
 
 Examples:
     python research.py "Is NVIDIA still a buy after the latest earnings?" --ticker NVDA
-    python research.py "How big is the Indian EV two-wheeler market and who is winning?"
-    python research.py "Compare AMD vs Intel in datacenter CPUs" --writer local
+    python research.py "Who is winning the Indian EV two-wheeler market?" --researcher ollama:qwen2.5:3b
+    python research.py "AMD vs Intel in datacenter CPUs" --writer ollama:market-researcher
 """
 
 import argparse
@@ -11,8 +11,8 @@ import re
 from datetime import date
 from pathlib import Path
 
-from agent import Researcher, log
-from writer import ClaudeWriter, LocalWriter
+from get_llm import spec_for
+from graph import build_graph, initial_state, is_failed, label, log
 
 REPORTS = Path(__file__).parent / "reports"
 
@@ -21,33 +21,26 @@ def main():
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("question")
     p.add_argument("--ticker", help="focus company ticker; enables quote, financials, filings and LSTM tools up front")
-    p.add_argument("--model", default="market-researcher", help="Ollama model for planning and tool calls")
-    p.add_argument("--ollama-host", default=None, help="defaults to OLLAMA_HOST or http://localhost:11434")
-    p.add_argument("--writer", choices=["auto", "claude", "local"], default="auto",
-                   help="auto = Claude if credentials are configured, otherwise the local model")
-    p.add_argument("--claude-model", default="claude-opus-5-5")
+    p.add_argument("--researcher", default=spec_for("researcher"),
+                   help="LLM spec for planning and tool calls (default: %(default)s)")
+    p.add_argument("--writer", default=spec_for("writer"),
+                   help="LLM spec for the final report (default: %(default)s); falls back to the researcher")
     p.add_argument("--max-steps", type=int, default=8, help="max tool-calling rounds after the initial sweep")
     args = p.parse_args()
 
-    researcher = Researcher(args.model, host=args.ollama_host, max_steps=args.max_steps)
-    state = researcher.research(args.question, args.ticker)
-
-    report = None
-    if args.writer in ("auto", "claude"):
-        try:
-            report = ClaudeWriter(args.claude_model).write(state)
-        except Exception as e:
-            if args.writer == "claude":
-                raise
-            log(f"Claude writer unavailable ({type(e).__name__}: {e}); falling back to local model")
-    if report is None:
-        report = LocalWriter(researcher).write(state)
+    graph = build_graph(args.researcher, args.writer, args.max_steps)
+    final = graph.invoke(
+        initial_state(args.question, args.ticker),
+        config={"recursion_limit": 2 * args.max_steps + 10},
+    )
 
     REPORTS.mkdir(exist_ok=True)
     slug = re.sub(r"[^a-z0-9]+", "-", (args.ticker or args.question).lower()).strip("-")[:50]
     path = REPORTS / f"{date.today()}-{slug}.md"
-    appendix = "\n\n---\n## Evidence log\n\n" + "\n".join(f"- {e.label()}" for e in state.evidence if not e.failed)
-    path.write_text(report + appendix)
+    appendix = "\n\n---\n## Evidence log\n\n" + "\n".join(
+        f"- {label(e)}" for e in final["evidence"] if not is_failed(e)
+    )
+    path.write_text(final["report"] + appendix)
     log(f"\nsaved {path}")
 
 
