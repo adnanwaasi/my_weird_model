@@ -1,0 +1,10 @@
+anthropic
+ollama>=0.4
+ddgs
+httpx
+trafilatura
+yfinance>=0.2.40
+pandas
+numpy
+# Optional: lets the agent call the LSTM forecaster
+# -r ../stock_market_prediction/requirements.txt
