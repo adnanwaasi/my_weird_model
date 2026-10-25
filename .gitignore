@@ -1,0 +1,5 @@
+.venv/
+__pycache__/
+.pytest_cache/
+stock_market_prediction/artifacts/
+market_research_agent/reports/

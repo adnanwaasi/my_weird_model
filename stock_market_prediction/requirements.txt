@@ -1,0 +1,6 @@
+torch>=2.2
+numpy
+pandas
+yfinance>=0.2.40
+matplotlib
+pytest
